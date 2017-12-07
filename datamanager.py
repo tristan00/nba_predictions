@@ -4,12 +4,14 @@ import numpy as np
 from collections import OrderedDict
 from sklearn.ensemble import RandomForestClassifier
 import random
+import datetime
 
 #generate 2 mirror sets of features to train
-def get_features_for_game(g_id, location_dict, team_dict, game_results, players, history_length = 10):
+def get_features_for_game(g_id, location_dict, team_dict, game_results, players, history_length = 25):
     game_bool = game_results['g_id'] == g_id
     team_game_df = game_results[game_bool]
     game_date = list(game_results[game_results['g_id'] == g_id]['date_played'])[0]
+    game_year = datetime.datetime.strptime(game_date, '%Y-%m-%d').date().year
 
     #get teams
     teams = list(team_game_df['team_name'])
@@ -63,11 +65,10 @@ def get_features_for_game(g_id, location_dict, team_dict, game_results, players,
     team_features = [team_dict[i] for i in sorted_teams]
     reversed_team_features = [i for i in reversed(team_features)]
     location = location_dict[list(game_results[game_results['g_id'] == g_id]['game_location'])[0]]
-    general_features = team_features + [location]
-    reversed_general_features = reversed_team_features + [location]
+    general_features = team_features + [location, game_year]
+    reversed_general_features = reversed_team_features + [location, game_year]
     input_features = np.array(team_input_features + general_features)
     input_features_reversed = np.array(team_input_features_reverse + reversed_general_features)
-    print(result_list[0])
     output_features = np.array(result_list)
     output_features_reversed = np.array([i for i in reversed([0, 1])])
 
@@ -77,7 +78,7 @@ def get_features_for_game(g_id, location_dict, team_dict, game_results, players,
     #game_results.sort('date_played', ascending=False)
     #print(game_results.head(history_length))
 
-def get_features(game_results, players, test_size = .1):
+def get_features(test_size = .1):
     location_dict = get_location_mapping()
     team_dict = get_team_mapping()
     print(team_dict)
@@ -95,10 +96,10 @@ def get_features(game_results, players, test_size = .1):
     random.shuffle(inputs)
     train_set = inputs[:-int(len(inputs)*test_size)]
     test_set = inputs[-int(len(inputs) * test_size):]
-    train_x = np.array(i[0] for i in train_set)
-    train_y = np.array(i[1] for i in train_set)
-    test_x = np.array(i[0] for i in test_set)
-    test_y = np.array(i[1] for i in test_set)
+    train_x = np.array([i[0] for i in train_set])
+    train_y = np.array([i[1] for i in train_set])
+    test_x = np.array([i[0] for i in test_set])
+    test_y = np.array([i[1] for i in test_set])
 
     return train_x, train_y, test_x, test_y
 
@@ -150,6 +151,6 @@ def read_data():
         return game_results, players
 
 if __name__ == '__main__':
-    game_results, players = read_data()
-    train_x, train_y, test_x, test_y = get_features(game_results, players)
+
+    train_x, train_y, test_x, test_y = get_features()
     run_model(train_x, train_y, test_x, test_y)
