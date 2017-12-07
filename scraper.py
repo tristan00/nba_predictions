@@ -57,7 +57,7 @@ def get_game_urls_at_date(input_date):
         return set()
 
 def get_date_range():
-    d1 = datetime.date(2016, 10, 30)
+    d1 = datetime.date(2010, 1, 1)
     d2 = datetime.datetime.now().date()
     dates = [d1 + datetime.timedelta(days=x) for x in range((d2 - d1).days + 1)]
     random.shuffle(dates)

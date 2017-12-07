@@ -19,8 +19,6 @@ def neural_network_model(input_x, input_lenth):
                       'biases': tf.Variable(tf.random_normal([nodes_per_layer]))}
     hidden_5_layer = {'weights': tf.Variable(tf.random_normal([nodes_per_layer, nodes_per_layer])),
                       'biases': tf.Variable(tf.random_normal([nodes_per_layer]))}
-
-
     output_layer = {'weights': tf.Variable(tf.random_normal([nodes_per_layer, n_classes])),
                     'biases': tf.Variable(tf.random_normal([n_classes]))}
 
@@ -41,16 +39,16 @@ def neural_network_model(input_x, input_lenth):
 
 def model():
     train_x, train_y, test_x, test_y = get_features()
-    x = tf.placeholder('float', [None, len(train_x)])
+    x = tf.placeholder('float', [None, len(train_x[0])])
     y = tf.placeholder('float', [None, n_classes])
-    prediction, prob = neural_network_model(x, len(train_x))
+    prediction, prob = neural_network_model(x, len(train_x[0]))
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     optimizer = tf.train.AdamOptimizer().minimize(cost)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
-        for epoch in total_epochs:
+        for epoch in range(total_epochs):
             epoch_loss = 0
             i = 0
             while i < len(train_x):
