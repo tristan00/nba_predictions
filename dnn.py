@@ -5,7 +5,7 @@ import numpy as np
 
 n_classes = 2
 batch_size = 10
-total_epochs = 100
+total_epochs = 1000
 nodes_per_layer = 500
 
 def neural_network_model(input_x, input_lenth):
@@ -59,8 +59,7 @@ def model():
                 _, c = sess.run([optimizer, cost], feed_dict={x: batch_x, y: batch_y, prob: .5})
                 epoch_loss += c
                 i += batch_size
-                print("Batch {0} of epoch {1} completed, loss: {2}".format(i / batch_size, epoch + 1, c))
-            print('total epoch loss:', epoch_loss)
+            print('epoch: {0}, total epoch loss: {1}'.format(epoch, epoch_loss))
 
         correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
         accuracy = tf.reduce_mean(tf.cast(correct, 'float'))

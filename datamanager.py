@@ -5,12 +5,71 @@ from collections import OrderedDict
 from sklearn.ensemble import RandomForestClassifier
 import random
 import datetime
+import traceback
+import time
+
+def get_team_features(team_id, player_df, results_df, history, result_characteristics_len = 10):
+    team_bool = results_df['team_name'] == team_id
+    last_n_games = results_df[team_bool].sort_values('date_played', ascending=False).head(5)
+    if len(last_n_games.values.tolist())<1:
+        return None
+    previous_games_id = list(last_n_games['g_id'])
+    previous_game_bool = player_df['g_id'].isin(previous_games_id)
+    player_team_bool = player_df['team_name'] == team_id
+    teams_players_last_game = set(player_df[previous_game_bool & player_team_bool]['player_id'])
+
+    team_players_median_win_contribution = []
+    team_players_median_loss_contribution = []
+
+    for p in teams_players_last_game:
+        try:
+            player_bool = player_df['player_id'] == p
+            win_bool = player_df['result'] == 1
+            loss_bool = player_df['result'] == 0
+
+            players_last_wins = player_df[player_bool & win_bool].sort_values('date_played', ascending=False).head(result_characteristics_len)
+            players_last_losses = player_df[player_bool & loss_bool].sort_values('date_played', ascending=False).head(result_characteristics_len)
+
+            win_df = players_last_wins.median(axis=0, numeric_only = True).to_frame()
+            loss_df = players_last_losses.median(axis=0, numeric_only = True).to_frame()
+
+            team_players_median_win_contribution.append(win_df)
+            team_players_median_loss_contribution.append(loss_df)
+        except:
+            traceback.print_exc()
+
+
+    team_players_median_win_contribution = pd.concat(team_players_median_win_contribution, axis = 1)
+    team_players_mean_win_contribution = team_players_median_win_contribution.mean(axis=1).values.tolist() #average player
+    team_players_skew_win_contribution = team_players_median_win_contribution.skew(axis=1).values.tolist()
+    team_players_kurtosis_win_contribution = team_players_median_win_contribution.kurtosis(axis=1).values.tolist()
+    team_players_max_win_contribution = team_players_median_win_contribution.max(axis=1).values.tolist()# best player
+
+    team_players_median_loss_contribution = pd.concat(team_players_median_loss_contribution, axis = 1)
+    team_players_mean_loss_contribution = team_players_median_loss_contribution.mean(axis=1).values.tolist() #average player
+    team_players_skew_loss_contribution = team_players_median_win_contribution.skew(axis=1).values.tolist()
+    team_players_kurtosis_loss_contribution = team_players_median_win_contribution.kurtosis(axis=1).values.tolist()
+    team_players_max_loss_contribution = team_players_median_loss_contribution.max(axis=1).values.tolist()# best player
+
+    win_perc_list = []
+    for h in history:
+        recent_game = results_df[team_bool].sort_values('date_played', ascending=False).head(h)
+        win_perc_list.append(recent_game['result'].mean())
+
+    return team_players_mean_win_contribution + team_players_max_win_contribution  + team_players_skew_win_contribution + \
+           team_players_kurtosis_win_contribution + team_players_mean_loss_contribution + team_players_max_loss_contribution + \
+           team_players_skew_loss_contribution + team_players_kurtosis_loss_contribution + win_perc_list
+
+
+def get_general_features(player_df, results_df,  result_characteristics_len = 100):
+    pass
 
 #generate 2 mirror sets of features to train
-def get_features_for_game(g_id, location_dict, team_dict, game_results, players, history_length = 25):
+def get_features_for_game(g_id, location_dict, team_dict, game_results, players, history_length = (1, 5, 10, 25)):
     game_bool = game_results['g_id'] == g_id
     team_game_df = game_results[game_bool]
     game_date = list(game_results[game_results['g_id'] == g_id]['date_played'])[0]
+    game_datetime_date = datetime.datetime.strptime(game_date, '%Y-%m-%d').date()
     game_year = datetime.datetime.strptime(game_date, '%Y-%m-%d').date().year
 
     #get teams
@@ -22,86 +81,67 @@ def get_features_for_game(g_id, location_dict, team_dict, game_results, players,
     #get last game the team played, get the players there, if unavailable return none and exit the method
     #team 1:
     #past_game_bool = game_results['date_played'] < game_date
-    team_bool = game_results['team_name'] == sorted_teams[0]
-    last_2_games = game_results[team_bool].sort_values('date_played', ascending=False).head(2)
-    if len(last_2_games.values.tolist())<1:
+    try:
+        team1_features = get_team_features(sorted_teams[0], players, game_results, history_length)
+        team2_features = get_team_features(sorted_teams[0], players, game_results, history_length)
+    except:
         return None
-    previous_game = last_2_games.iloc[[1]]
-    previous_game_id = list(previous_game.head(1)['g_id'])[0]
-    teams_players_last_game = set(players[(players['g_id'] == previous_game_id) & (players['team_name'] == sorted_teams[0])]['player_id'])
-    player_stats = []
-    for i in teams_players_last_game:
-        sorted_most_recent_n_games = players[players['player_id'] == i].sort_values('date_played', ascending=False).head(history_length)
-        player_stats.append(sorted_most_recent_n_games)
-    if len(player_stats) == 0:
-        return None
-    concat_player_stats = pd.concat(player_stats)
-    concat_player_stats.fillna('', inplace=True)
-    mean_features1 = concat_player_stats.mean(numeric_only = True).values.tolist()
-    median_features1 = concat_player_stats.median(numeric_only=True).values.tolist()
-
-    team_bool = game_results['team_name'] == sorted_teams[1]
-    last_2_games = game_results[team_bool].sort_values('date_played', ascending=False).head(2)
-    if len(last_2_games.values.tolist())<1:
-        return None
-    previous_game = last_2_games.iloc[[1]]
-    previous_game_id = list(previous_game.head(1)['g_id'])[0]
-    teams_players_last_game = set(players[(players['g_id'] == previous_game_id) & (players['team_name'] == sorted_teams[1])]['player_id'])
-    player_stats = []
-    for i in teams_players_last_game:
-        sorted_most_recent_n_games = players[players['player_id'] == i].sort_values('date_played', ascending=False).head(history_length)
-        player_stats.append(sorted_most_recent_n_games)
-    if len(player_stats) == 0:
-        return None
-    concat_player_stats = pd.concat(player_stats)
-    concat_player_stats.fillna('', inplace=True)
-    mean_features2 = concat_player_stats.mean(numeric_only = True).values.tolist()
-    median_features2 = concat_player_stats.median(numeric_only=True).values.tolist()
-
-    team_input_features =  mean_features1 + median_features1 + mean_features2 + median_features2
-    team_input_features_reverse = mean_features2 + median_features2 + mean_features1 + median_features1
 
     #general features
     team_features = [team_dict[i] for i in sorted_teams]
     reversed_team_features = [i for i in reversed(team_features)]
     location = location_dict[list(game_results[game_results['g_id'] == g_id]['game_location'])[0]]
+    #get_play for largest value in history
+    #get_past h games
+
+    #sorted_most_recent_n_games = players[players['player_id'] == i].sort_values('date_played', ascending=False).head(h)
+    team_input_features = team1_features + team2_features
+    team_input_features_reverse = team2_features + team1_features
     general_features = team_features + [location, game_year]
     reversed_general_features = reversed_team_features + [location, game_year]
     input_features = np.array(team_input_features + general_features)
     input_features_reversed = np.array(team_input_features_reverse + reversed_general_features)
-    output_features = np.array(result_list)
-    output_features_reversed = np.array([i for i in reversed([0, 1])])
+    output_features = result_list
+    output_features_reversed = [i for i in reversed([0, 1])]
 
-    return [[input_features, output_features], [input_features_reversed, output_features_reversed]]
+
+    game_dict = dict()
+    game_dict['team1_features'] = team1_features
+    game_dict['team2_features'] = team2_features
+    game_dict['general_features1'] = general_features
+    game_dict['general_features2'] = reversed_general_features
+    game_dict['result'] = output_features
+    game_dict['result_reversed'] = output_features_reversed
+    game_dict['teams'] = sorted_teams
+
+
+    return (game_datetime_date, g_id, game_dict)
 
     #get game details
     #game_results.sort('date_played', ascending=False)
     #print(game_results.head(history_length))
 
-def get_features(test_size = .1):
+def get_features():
     location_dict = get_location_mapping()
     team_dict = get_team_mapping()
     print(team_dict)
-    unique_game_ids = dict()
     game_results, players = read_data()
     players.fillna(0, inplace=True)
+    start_time = time.time()
 
     g_ids = set(players['g_id'])
-    inputs = []
-    for g in g_ids:
+    output_dict = dict()
+    feature_list_of_list = []
+    for count, g in enumerate(g_ids):
         feature_list = get_features_for_game(g, location_dict, team_dict, game_results, players)
-        if feature_list is not None:
-            inputs.extend(feature_list)
+        if feature_list:
+            game_date, g_id, game_dict = feature_list
+            output_dict.setdefault(game_date, dict())
+            output_dict[game_date][g_id] = game_dict
+            feature_list_of_list.append(feature_list)
+        print('{0} processed of {1}, output len: {2}, time:{3}'.format(count, len(g_ids), len(feature_list_of_list), (time.time()- start_time)/len(feature_list_of_list)))
 
-    random.shuffle(inputs)
-    train_set = inputs[:-int(len(inputs)*test_size)]
-    test_set = inputs[-int(len(inputs) * test_size):]
-    train_x = np.array([i[0] for i in train_set])
-    train_y = np.array([i[1] for i in train_set])
-    test_x = np.array([i[0] for i in test_set])
-    test_y = np.array([i[1] for i in test_set])
-
-    return train_x, train_y, test_x, test_y
+    return output_dict
 
 def evaluate_predictions(predictions, results):
     correct = 0
