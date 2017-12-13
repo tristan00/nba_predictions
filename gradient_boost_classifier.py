@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from collections import OrderedDict
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 import datetime
 import random
 from datamanager import get_features
@@ -22,7 +22,7 @@ def evaluate_predictions(predictions, results):
 
 def run_model(train_x, train_y, test_x, test_y):
 
-    clf = RandomForestClassifier(n_estimators = 128)
+    clf = GradientBoostingClassifier()
     #print(np.squeeze(test_x))
     if len(test_x) > 1:
         train_x = np.nan_to_num(np.squeeze(np.array(train_x)))
@@ -42,7 +42,7 @@ def run_model(train_x, train_y, test_x, test_y):
     print(train_y.shape)
     print(test_x.shape)
     print(test_y.shape)
-
+    print()
     clf.fit(train_x, train_y)
     pred = clf.predict(test_x)
     correct, total = evaluate_predictions(pred, test_y)
@@ -59,6 +59,7 @@ def get_features_for_test_date(feature_dict, test_date, test_future = False):
 
     train_game_dicts = {k: v for d in train_game_dicts for k, v in d.items() }
     test_game_dicts = {k: v for d in test_game_dicts for k, v in d.items() }
+
 
     training_features = []
     for i, j in train_game_dicts.items():
@@ -90,7 +91,7 @@ def incrementally_test(start_date, end_date, feature_dict):
 
 
 if __name__ == '__main__':
-    scraper.main()
+    # scraper.main()
     feature_dict = get_features()
     february_1_2017 = datetime.date(2017, 1, 1)
     # december_5_2017 = datetime.date(2005, 1, 31)

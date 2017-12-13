@@ -57,7 +57,7 @@ def get_game_urls_at_date(input_date):
         return set()
 
 def get_date_range():
-    d1 = datetime.date(2005, 1, 1)
+    d1 = datetime.date(1980, 1, 1)
     #d2 = datetime.date(2005, 1, 31)
     d2 = datetime.datetime.now().date()
     dates = [d1 + datetime.timedelta(days=x) for x in range((d2 - d1).days + 1)]
@@ -109,12 +109,16 @@ def read_game_info(game_url):
         first_pass = True
         for i in basic_info_tables:
             for j in i.find_all('tr'):
-                if j.find('a') is None:
+                columns = j.find_all('td')
+                if j.find('a') is not None:
+                    player_id = j.find('a')['href']
+                elif 'Team Totals' in j.text:
+                    player_id = 'Team_Totals'
+                else:
                     continue
-                player_id = j.find('a')['href']
                 player_dict.setdefault(player_id, dict())
                 player_dict[player_id]['team'] = team_1_id if first_pass else team_2_id
-                columns = j.find_all('td')
+
                 if len(columns) < 19:
                     continue
 
@@ -140,9 +144,13 @@ def read_game_info(game_url):
 
         for i in advanced_info_tables:
             for j in i.find_all('tr'):
-                if j.find('a') is None:
+                if j.find('a') is not None:
+                    player_id = j.find('a')['href']
+                elif 'Team Totals' in j.text:
+                    player_id = 'Team_Totals'
+                else:
                     continue
-                player_id = j.find('a')['href']
+
                 player_dict.setdefault(player_id, dict())
                 columns = j.find_all('td')
 
