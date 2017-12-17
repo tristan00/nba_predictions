@@ -2,3 +2,6 @@
 nba.db
 *.pyc
 *.pyc
+*.pyc
+*.pkl
+*.db

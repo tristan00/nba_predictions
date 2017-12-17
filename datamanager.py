@@ -11,88 +11,35 @@ from elo import rate_1vs1
 import operator
 
 starting_elo = 1000
+numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
 elo_df = pd.DataFrame(columns=['team_name','date_played','elo'])
 
 def get_team_features(team_id, player_df, results_df, history, game_date, result_characteristics_len = 10):
     team_bool = results_df['team_name'] == team_id
-    last_n_games = results_df[team_bool].sort_values('date_played', ascending=False).head(5)
-    if len(last_n_games.values.tolist())<1:
-        raise Exception('no previous games')
-    previous_games_id = list(last_n_games['g_id'])
-    previous_game_bool = player_df['g_id'].isin(previous_games_id)
-    player_team_bool = player_df['team_name'] == team_id
-    teams_players_last_game = set(player_df[previous_game_bool & player_team_bool]['player_id'])
 
-    dfs = []
-    for p in teams_players_last_game:
-        try:
-            player_bool = player_df['player_id'] == p
-            win_bool = player_df['result'] == 1
-            loss_bool = player_df['result'] == 0
+    team_info = player_df[player_df['team_name'] == team_id]
+    #print(team_info.shape)
 
-            players_last_games = player_df[player_bool].sort_values('date_played', ascending=False).head(100)[['ortg', 'drtg']]
-            dfs.append(players_last_games)
-        except:
-            pass
+    if team_info.empty:
+        raise Exception('No past games')
 
-    team_players_median_win_contribution = pd.concat(dfs, axis = 1)
-    team_players_mean_win_contribution = team_players_median_win_contribution.mean(axis=1).values.tolist() #average player
-    team_players_skew_win_contribution = team_players_median_win_contribution.skew(axis=1).values.tolist()
-    team_players_kurtosis_win_contribution = team_players_median_win_contribution.kurtosis(axis=1).values.tolist()
-    team_players_max_win_contribution = team_players_median_win_contribution.max(axis=1).values.tolist()# best player
+    team_info.fillna(0, inplace=True)
+    team_info = team_info.select_dtypes(include=numerics)
 
-
-    '''
-    num_of_active_players = [len(teams_players_last_game)]
-
-    team_players_median_win_contribution = []
-    team_players_median_loss_contribution = []
-
-    for p in teams_players_last_game:
-        try:
-            player_bool = player_df['player_id'] == p
-            win_bool = player_df['result'] == 1
-            loss_bool = player_df['result'] == 0
-
-            players_last_wins = player_df[player_bool & win_bool].sort_values('date_played', ascending=False).head(result_characteristics_len)
-            players_last_losses = player_df[player_bool & loss_bool].sort_values('date_played', ascending=False).head(result_characteristics_len)
-
-            win_df = players_last_wins.median(axis=0, numeric_only = True).to_frame()
-            loss_df = players_last_losses.median(axis=0, numeric_only = True).to_frame()
-
-            team_players_median_win_contribution.append(win_df)
-            team_players_median_loss_contribution.append(loss_df)
-        except:
-            traceback.print_exc()
-
-
-    team_players_median_win_contribution = pd.concat(team_players_median_win_contribution, axis = 1)
-    team_players_mean_win_contribution = team_players_median_win_contribution.mean(axis=1).values.tolist() #average player
-    team_players_skew_win_contribution = team_players_median_win_contribution.skew(axis=1).values.tolist()
-    team_players_kurtosis_win_contribution = team_players_median_win_contribution.kurtosis(axis=1).values.tolist()
-    team_players_max_win_contribution = team_players_median_win_contribution.max(axis=1).values.tolist()# best player
-
-    team_players_median_loss_contribution = pd.concat(team_players_median_loss_contribution, axis = 1)
-    team_players_mean_loss_contribution = team_players_median_loss_contribution.mean(axis=1).values.tolist() #average player
-    team_players_skew_loss_contribution = team_players_median_win_contribution.skew(axis=1).values.tolist()
-    team_players_kurtosis_loss_contribution = team_players_median_win_contribution.kurtosis(axis=1).values.tolist()
-    team_players_max_loss_contribution = team_players_median_loss_contribution.max(axis=1).values.tolist()# best player
-
-    team_elo = [look_up_elo(results_df, team_id, game_date)]
+    team_mean = team_info.mean(axis=0).values.tolist()
+    team_skew = team_info.skew(axis=0).values.tolist()
+    team_kurtosis = team_info.kurtosis(axis=0).values.tolist()
+    team_median = team_info.median(axis=0).values.tolist()
 
     win_perc_list = []
     for h in history:
         recent_game = results_df[team_bool].sort_values('date_played', ascending=False).head(h)
-        #opponent_side = results_df[recent_game['g_id'] != team_id].sort_values('date_played', ascending=False).head(h)
         win_perc_list.append(recent_game['result'].mean())
-
-
-    return team_elo + num_of_active_players +team_players_mean_win_contribution + team_players_max_win_contribution  + team_players_skew_win_contribution + \
-           team_players_kurtosis_win_contribution + team_players_mean_loss_contribution + team_players_max_loss_contribution + \
-           team_players_skew_loss_contribution + team_players_kurtosis_loss_contribution + win_perc_list'''
     team_elo = [look_up_elo(results_df, team_id, game_date)]
-    return team_elo + team_players_mean_win_contribution + team_players_max_win_contribution  + team_players_skew_win_contribution + \
-           team_players_kurtosis_win_contribution
+
+    return team_elo + team_mean + team_skew  + team_kurtosis + team_median + win_perc_list
+    #return team_elo + team_mean + win_perc_list
+
 
 #generate 2 mirror sets of features to train
 def get_features_for_game(g_id, location_dict, team_dict, game_results, players, history_length = (1, 5, 10, 25)):
@@ -114,37 +61,43 @@ def get_features_for_game(g_id, location_dict, team_dict, game_results, players,
     #team 1:
     #past_game_bool = game_results['date_played'] < game_date
 
-    pre_game_player_df = players[players['date_played'] < game_date]
-    pre_game_player_df = pre_game_player_df[pre_game_player_df['date_played'] > max_pre_game_period_str]
-    pre_game_result_df = game_results[game_results['date_played'] < game_date]
-    pre_game_result_df = pre_game_result_df[pre_game_result_df['date_played'] > max_pre_game_period_str]
+    is_player_df_before_game = players['date_played'] < game_date
+    is_player_df_recent = players['date_played'] > max_pre_game_period_str
+    is_result_df_before_game = game_results['date_played'] < game_date
+    is_result_df_recent = game_results['date_played'] > max_pre_game_period_str
+
+
+    pre_game_player_df = players[is_player_df_before_game & is_player_df_recent]
+    pre_game_result_df = game_results[is_result_df_before_game & is_result_df_recent]
+    #print(pre_game_player_df.shape)
+    #print(pre_game_result_df.shape)
 
     try:
         team1_features = []
         team2_features=[]
         team1_features = get_team_features(sorted_teams[0], pre_game_player_df, pre_game_result_df, history_length, game_date)
-        team2_features = get_team_features(sorted_teams[0], pre_game_player_df, pre_game_result_df, history_length, game_date)
+        team1_features.append(players[players['team_name'] == sorted_teams[0]]['home_game'].values[0])
+        team2_features = get_team_features(sorted_teams[1], pre_game_player_df, pre_game_result_df, history_length, game_date)
+        team2_features.append(players[players['team_name'] == sorted_teams[1]]['home_game'].values[0])
     except:
         traceback.print_exc()
         return None
 
     #general features
     sorted_team_list = sorted([i for i in team_dict.keys()])
-    team_features = [one_hot_encode(sorted_team_list , i) for i in sorted_teams]
-    reversed_team_features = [i for i in reversed(team_features)]
-    team_features = sum(team_features, [])
-    reversed_team_features = sum(reversed_team_features, [])
+    #team_features = [one_hot_encode(sorted_team_list , i) for i in sorted_teams]
+    #reversed_team_features = [i for i in reversed(team_features)]
+    #team_features = sum(team_features, [])
+    #reversed_team_features = sum(reversed_team_features, [])
     #team_features = one_hot_encode(sorted_team_list , list(game_results[game_results['g_id'] == g_id]['game_location']))
     #reversed_team_features = [i for i in reversed(team_features)]
     #location = location_dict[list(game_results[game_results['g_id'] == g_id]['game_location'])[0]]
-    sorted_location_list = sorted([i for i in location_dict.keys()])
-    location = one_hot_encode(sorted_location_list , list(game_results[game_results['g_id'] == g_id]['game_location']))
     #get_play for largest value in history
     #get_past h games
 
     #sorted_most_recent_n_games = players[players['player_id'] == i].sort_values('date_played', ascending=False).head(h)
-    general_features = team_features + location + [game_datetime_date.year, game_datetime_date.month]
-    reversed_general_features = reversed_team_features + location + [game_datetime_date.year, game_datetime_date.month]
+    general_features = [game_datetime_date.year, game_datetime_date.month]
+    #reversed_general_features =  [game_datetime_date.year, game_datetime_date.month]
     output_features = result_list
     output_features_reversed = [i for i in reversed(result_list)]
 
@@ -153,7 +106,7 @@ def get_features_for_game(g_id, location_dict, team_dict, game_results, players,
     game_dict['team1_features'] = team1_features
     game_dict['team2_features'] = team2_features
     game_dict['general_features1'] = general_features
-    game_dict['general_features2'] = reversed_general_features
+    game_dict['general_features2'] = general_features
     game_dict['result'] = output_features
     game_dict['result_reversed'] = output_features_reversed
     game_dict['teams'] = sorted_teams
@@ -171,7 +124,7 @@ def get_features():
     game_results, players = read_data()
     players.fillna(0, inplace=True)
 
-    #calculate_elo(game_results)
+    calculate_elo(game_results)
     start_time = time.time()
 
     g_ids = set(game_results['g_id'])
@@ -185,6 +138,7 @@ def get_features():
             output_dict[game_date][g_id] = game_dict
             feature_list_of_list.append(feature_list)
         print('{0} processed of {1}, output len: {2}, time:{3}'.format(count, len(g_ids), len(feature_list_of_list), (time.time()- start_time)/max(1, len(feature_list_of_list))))
+    elo_df.to_pickle('models/elo_storage.pkl')
     return output_dict
 
 def evaluate_predictions(predictions, results):
@@ -205,7 +159,6 @@ def run_model(train_x, train_y, test_x, test_y):
     pred = clf.predict(test_x)
     accuracy = evaluate_predictions(pred, test_y)
     print('accuracy:', accuracy)
-
 
 def one_hot_encode(array, element):
     output = [0 for i in array] + [0]
@@ -258,21 +211,26 @@ def look_up_elo(result_df, team_name, date_played):
     return elo
 
 def calculate_elo(results_df):
-    results_df = results_df.sort_values('date_played', ascending=True)
-    for i, j in results_df.iterrows():
-        look_up_elo(results_df, j['team_name'], j['date_played'])
+    global elo_df
+    try:
+        elo_df = pd.read_pickle('models/elo_storage.pkl')
+    except:
+        traceback.print_exc()
+        results_df = results_df.sort_values('date_played', ascending=True)
+        for i, j in results_df.iterrows():
+            look_up_elo(results_df, j['team_name'], j['date_played'])
     print(elo_df.sort_values('date_played', ascending=False).head(50))
+
 
 def read_data():
     with sqlite3.connect('nba.db') as conn:
         game_results = pd.read_sql('''select distinct game.g_id, team_game.team_name, team_game.result, team_game.date_played, team_game.game_location
-        from game join team_game on game.g_id = team_game.g_id where team_game.date_played > ?''', conn, params=('2005-01-01',))
+        from game join team_game on game.g_id = team_game.g_id where team_game.date_played > ?''', conn, params=('1985-01-01',))
 
-        players = pd.read_sql('''select *
-                from player_game_contribution''', conn)
-        return game_results, players
+        team_contribution = pd.read_sql('''select *
+                from team_total_performance ''', conn)
+        return game_results, team_contribution
 
 if __name__ == '__main__':
-    train_x, train_y, test_x, test_y = get_features()
-    run_model(train_x, train_y, test_x, test_y)
+    get_features()
 

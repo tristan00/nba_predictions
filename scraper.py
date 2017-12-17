@@ -9,7 +9,7 @@ import re
 import traceback
 import time
 
-sleep_time = .2
+sleep_time = .1
 game_search_base_url = 'https://www.basketball-reference.com/boxscores/index.cgi?month={1}&day={2}&year={0}'
 game_base_url = 'https://www.basketball-reference.com{0}'
 player_base_url = 'https://www.basketball-reference.com'
@@ -22,6 +22,7 @@ def make_request(url):
             s = requests.Session()
             return s.get(url)
         except:
+            traceback.print_exc()
             time.sleep(30)
 
 def build_db():
@@ -32,7 +33,11 @@ def build_db():
         conn.execute('''create table if not exists player_game_contribution (player_id text, g_id text, team_name text, date_played date, minutes_played int, fg int, fga int,
                      threeP int, threePA int, FT int, FTA int, ORB int, DRB int, AST int, STL int, BLK int, TOV int, PF int, PTS int, plus_minus int,
                      ts_perc float, three_p_ar float, ftr float, ODR_perc float, DBR_perc float, AST_perc float, STL_perc float, BLK_perc float,
-                     TOV_perc flaot, USG_perc float, ortg int, drtg int, result int)''')
+                     TOV_perc flaot, USG_perc float, ortg int, drtg int, result int, home_game int)''')
+        conn.execute('''create table if not exists team_total_performance (g_id text, team_name text, date_played date, minutes_played int, fg int, fga int,
+                     threeP int, threePA int, FT int, FTA int, ORB int, DRB int, AST int, STL int, BLK int, TOV int, PF int, PTS int, plus_minus int,
+                     ts_perc float, three_p_ar float, ftr float, ODR_perc float, DBR_perc float, AST_perc float, STL_perc float, BLK_perc float,
+                     TOV_perc flaot, USG_perc float, ortg int, drtg int, result int, home_game int)''')
         conn.commit()
 
 def get_game_urls_at_date(input_date):
@@ -94,81 +99,98 @@ def read_game_info(game_url):
         team_1_score_info = score_table_edited.find_all('tr')[2]
         team_2_score_info = score_table_edited.find_all('tr')[3]
 
-        team_1_id = '/'.join(team_1_score_info.find('a')['href'].split('/')[:-1])
-        team_2_id = '/'.join(team_2_score_info.find('a')['href'].split('/')[:-1])
+        team_1_id = team_1_score_info.find('a')['href'].split('/')[:-1][-1]
+        team_2_id = team_2_score_info.find('a')['href'].split('/')[:-1][-1]
 
         team_1_score = int(team_1_score_info.find_all('td')[-1].text)
         team_2_score = int(team_2_score_info.find_all('td')[-1].text)
-
 
         #player_info
         basic_info_tables = soup.find_all('div', {'id':re.compile(r'all_box_[a-zA-Z]{3}_basic')})
         advanced_info_tables = soup.find_all('div', {'id': re.compile(r'all_box_[a-zA-Z]{3}_advanced')})
 
         player_dict = dict()
+        team_totals = dict()
         first_pass = True
         for i in basic_info_tables:
             for j in i.find_all('tr'):
+                team = team_1_id if first_pass else team_2_id
                 columns = j.find_all('td')
                 if j.find('a') is not None:
                     player_id = j.find('a')['href']
+                    output_dict = dict()
                 elif 'Team Totals' in j.text:
                     player_id = 'Team_Totals'
                 else:
                     continue
-                player_dict.setdefault(player_id, dict())
-                player_dict[player_id]['team'] = team_1_id if first_pass else team_2_id
 
                 if len(columns) < 19:
                     continue
 
-                player_dict[player_id]['min_played'] = int(j.find('td', {'data-stat':'mp'}).text.split(':')[0])
-                player_dict[player_id]['fg'] = int(j.find('td', {'data-stat': 'fg'}).text)
-                player_dict[player_id]['fga'] = int(j.find('td', {'data-stat': 'fga'}).text)
-                player_dict[player_id]['threeP'] = int(j.find('td', {'data-stat': 'fg3'}).text)
-                player_dict[player_id]['threePA'] = int(j.find('td', {'data-stat': 'fg3a'}).text)
-                player_dict[player_id]['FT'] = int(j.find('td', {'data-stat': 'ft'}).text)
-                player_dict[player_id]['FTA'] = int(j.find('td', {'data-stat': 'fta'}).text)
-                player_dict[player_id]['ORB'] = int(j.find('td', {'data-stat': 'orb'}).text)
-                player_dict[player_id]['DRB'] = int(j.find('td', {'data-stat': 'drb'}).text)
-                player_dict[player_id]['AST'] = int(j.find('td', {'data-stat': 'ast'}).text)
-                player_dict[player_id]['STL'] = int(j.find('td', {'data-stat': 'stl'}).text)
-                player_dict[player_id]['BLK'] = int(j.find('td', {'data-stat': 'blk'}).text)
-                player_dict[player_id]['PF'] = int(j.find('td', {'data-stat': 'pf'}).text)
-                player_dict[player_id]['PTS'] = int(j.find('td', {'data-stat': 'pts'}).text)
+                output_dict['min_played'] = int(j.find('td', {'data-stat':'mp'}).text.split(':')[0])
+                output_dict['fg'] = int(j.find('td', {'data-stat': 'fg'}).text)
+                output_dict['fga'] = int(j.find('td', {'data-stat': 'fga'}).text)
+                output_dict['threeP'] = int(j.find('td', {'data-stat': 'fg3'}).text)
+                output_dict['threePA'] = int(j.find('td', {'data-stat': 'fg3a'}).text)
+                output_dict['FT'] = int(j.find('td', {'data-stat': 'ft'}).text)
+                output_dict['FTA'] = int(j.find('td', {'data-stat': 'fta'}).text)
+                output_dict['ORB'] = int(j.find('td', {'data-stat': 'orb'}).text)
+                output_dict['DRB'] = int(j.find('td', {'data-stat': 'drb'}).text)
+                output_dict['AST'] = int(j.find('td', {'data-stat': 'ast'}).text)
+                output_dict['STL'] = int(j.find('td', {'data-stat': 'stl'}).text)
+                output_dict['BLK'] = int(j.find('td', {'data-stat': 'blk'}).text)
+                output_dict['PF'] = int(j.find('td', {'data-stat': 'pf'}).text)
+                output_dict['PTS'] = int(j.find('td', {'data-stat': 'pts'}).text)
                 try:
-                    player_dict[player_id]['plus_minus'] = int(eval('0' + j.find('td', {'data-stat': 'plus_minus'}).text))
+                    output_dict['plus_minus'] = int(eval('0' + j.find('td', {'data-stat': 'plus_minus'}).text))
                 except:
-                    player_dict[player_id]['plus_minus'] = None
+                    output_dict['plus_minus'] = None
+                output_dict['team'] = team
+                if team in game_url:
+                    output_dict['home_game'] = 1
+                else:
+                    output_dict['home_game'] = 0
+
+                if player_id != 'Team_Totals':
+                    player_dict.setdefault(player_id, output_dict)
+                else:
+                    team_totals[team] = output_dict
             first_pass = False
 
+        first_pass = True
         for i in advanced_info_tables:
             for j in i.find_all('tr'):
+                team = team_1_id if first_pass else team_2_id
+                columns = j.find_all('td')
                 if j.find('a') is not None:
                     player_id = j.find('a')['href']
+                    output_dict = dict()
                 elif 'Team Totals' in j.text:
                     player_id = 'Team_Totals'
                 else:
                     continue
 
-                player_dict.setdefault(player_id, dict())
-                columns = j.find_all('td')
-
                 if len(columns) < 14:
                     continue
 
-                player_dict[player_id]['ts_perc'] = convert_to_float(j.find('td', {'data-stat': 'ts_pct'}).text)
-                player_dict[player_id]['three_p_ar'] = convert_to_float(j.find('td', {'data-stat': 'fg3a_per_fga_pct'}).text)
-                player_dict[player_id]['ftr'] = convert_to_float(j.find('td', {'data-stat': 'fta_per_fga_pct'}).text)
-                player_dict[player_id]['ODR_perc'] = convert_to_float(j.find('td', {'data-stat': 'orb_pct'}).text)
-                player_dict[player_id]['DBR_perc'] = convert_to_float(j.find('td', {'data-stat': 'drb_pct'}).text)
-                player_dict[player_id]['AST_perc'] = convert_to_float(j.find('td', {'data-stat': 'ast_pct'}).text)
-                player_dict[player_id]['STL_perc'] = convert_to_float(j.find('td', {'data-stat': 'stl_pct'}).text)
-                player_dict[player_id]['BLK_perc'] = convert_to_float(j.find('td', {'data-stat': 'blk_pct'}).text)
-                player_dict[player_id]['TOV_perc'] = convert_to_float(j.find('td', {'data-stat': 'tov_pct'}).text)
-                player_dict[player_id]['USG_perc'] = convert_to_float(j.find('td', {'data-stat': 'usg_pct'}).text)
-                player_dict[player_id]['ortg'] = convert_to_float(j.find('td', {'data-stat': 'off_rtg'}).text)
-                player_dict[player_id]['drtg'] = convert_to_float(j.find('td', {'data-stat': 'def_rtg'}).text)
+                output_dict['ts_perc'] = convert_to_float(j.find('td', {'data-stat': 'ts_pct'}).text)
+                output_dict['three_p_ar'] = convert_to_float(j.find('td', {'data-stat': 'fg3a_per_fga_pct'}).text)
+                output_dict['ftr'] = convert_to_float(j.find('td', {'data-stat': 'fta_per_fga_pct'}).text)
+                output_dict['ODR_perc'] = convert_to_float(j.find('td', {'data-stat': 'orb_pct'}).text)
+                output_dict['DBR_perc'] = convert_to_float(j.find('td', {'data-stat': 'drb_pct'}).text)
+                output_dict['AST_perc'] = convert_to_float(j.find('td', {'data-stat': 'ast_pct'}).text)
+                output_dict['STL_perc'] = convert_to_float(j.find('td', {'data-stat': 'stl_pct'}).text)
+                output_dict['BLK_perc'] = convert_to_float(j.find('td', {'data-stat': 'blk_pct'}).text)
+                output_dict['TOV_perc'] = convert_to_float(j.find('td', {'data-stat': 'tov_pct'}).text)
+                output_dict['USG_perc'] = convert_to_float(j.find('td', {'data-stat': 'usg_pct'}).text)
+                output_dict['ortg'] = convert_to_float(j.find('td', {'data-stat': 'off_rtg'}).text)
+                output_dict['drtg'] = convert_to_float(j.find('td', {'data-stat': 'def_rtg'}).text)
+
+                if player_id != 'Team_Totals':
+                    player_dict.get(player_id,dict).update(output_dict)
+                else:
+                    team_totals.get(team, dict).update(output_dict)
+            first_pass = False
 
         with sqlite3.connect('nba.db') as conn:
             winning_team = team_1_id if team_1_score > team_2_score else team_2_id
@@ -178,8 +200,8 @@ def read_game_info(game_url):
             conn.execute('insert into team_game values (?,?,?,?,?,?,?)', \
                          (game_url, team_2_id, game_date, 1 if team_2_score > team_1_score else 0,team_2_score,location,None))
             for i, j in player_dict.items():
-                conn.execute('insert into player_game_contribution values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?)', \
-                             (i, game_url, player_dict[player_id]['team'], game_date,player_dict[i].get('min_played', 0), player_dict[i].get('fg', None),
+                conn.execute('insert into player_game_contribution values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
+                             (i, game_url, player_dict[i]['team'], game_date,player_dict[i].get('min_played', 0), player_dict[i].get('fg', None),
                               player_dict[i].get('fga', None), player_dict[i].get('threeP', None), player_dict[i].get('threePA', None), player_dict[i].get('FT', None),
                               player_dict[i].get('FTA', None), player_dict[i].get('ORB', None), player_dict[i].get('DRB', None),
                               player_dict[i].get('AST', None), player_dict[i].get('STL', None), player_dict[i].get('BLK', None),
@@ -188,7 +210,19 @@ def read_game_info(game_url):
                               player_dict[i].get('ftr', None), player_dict[i].get('ODR_perc', None), player_dict[i].get('DBR_perc', None),
                               player_dict[i].get('AST_perc', None), player_dict[i].get('STL_perc', None), player_dict[i].get('BLK_perc', None),
                               player_dict[i].get('TOV_perc', None), player_dict[i].get('USG_perc', None), player_dict[i].get('ortg', None),
-                              player_dict[i].get('drtg', None), 1 if player_dict[player_id]['team'] == winning_team else 0))
+                              player_dict[i].get('drtg', None), 1 if player_dict[i]['team'] == winning_team else 0, player_dict[i]['home_game']))
+            for i, j in team_totals.items():
+                conn.execute('insert into team_total_performance values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
+                             (game_url, team_totals[i]['team'], game_date,team_totals[i].get('min_played', 0), team_totals[i].get('fg', None),
+                              team_totals[i].get('fga', None), team_totals[i].get('threeP', None), team_totals[i].get('threePA', None),
+                              team_totals[i].get('FT', None),team_totals[i].get('FTA', None), team_totals[i].get('ORB', None), team_totals[i].get('DRB', None),
+                              team_totals[i].get('AST', None), team_totals[i].get('STL', None), team_totals[i].get('BLK', None),
+                              team_totals[i].get('TOV_perc', None), team_totals[i].get('PF', None), team_totals[i].get('PTS', None),
+                              team_totals[i].get('plus_minus', None), team_totals[i].get('ts_perc', None), team_totals[i].get('three_p_ar', None),
+                              team_totals[i].get('ftr', None), team_totals[i].get('ODR_perc', None), team_totals[i].get('DBR_perc', None),
+                              team_totals[i].get('AST_perc', None), team_totals[i].get('STL_perc', None), team_totals[i].get('BLK_perc', None),
+                              team_totals[i].get('TOV_perc', None), team_totals[i].get('USG_perc', None), team_totals[i].get('ortg', None),
+                              team_totals[i].get('drtg', None), 1 if team_totals[i]['team'] == winning_team else 0, team_totals[i]['home_game']))
             conn.commit()
 
         return set([i for i,j in player_dict.items()])
