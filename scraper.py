@@ -13,6 +13,8 @@ sleep_time = .1
 game_search_base_url = 'https://www.basketball-reference.com/boxscores/index.cgi?month={1}&day={2}&year={0}'
 game_base_url = 'https://www.basketball-reference.com{0}'
 player_base_url = 'https://www.basketball-reference.com'
+path = r'C:\Users\trist\Documents\db_loc\nba/'
+
 
 def make_request(url):
     max_tries = 3
@@ -26,15 +28,15 @@ def make_request(url):
             time.sleep(30)
 
 def build_db():
-    with sqlite3.connect('nba.db') as conn:
+    with sqlite3.connect(path + 'nba.db') as conn:
         conn.execute('create table if not exists player (player_id TEXT UNIQUE, dob date)')
         conn.execute('create table if not exists game (g_id text unique, game_date date, location text)')
         conn.execute('create table if not exists team_game (g_id text, team_name text, date_played date, result int, score int, game_location text, game_type text)')#game from 1 teams percepective
-        conn.execute('''create table if not exists player_game_contribution (player_id text, g_id text, team_name text, date_played date, minutes_played int, fg int, fga int,
+        conn.execute('''create table if not exists player_game_contribution (player_id text, g_id text, team_name text, opponent_name text, date_played date, minutes_played int, fg int, fga int,
                      threeP int, threePA int, FT int, FTA int, ORB int, DRB int, AST int, STL int, BLK int, TOV int, PF int, PTS int, plus_minus int,
                      ts_perc float, three_p_ar float, ftr float, ODR_perc float, DBR_perc float, AST_perc float, STL_perc float, BLK_perc float,
                      TOV_perc flaot, USG_perc float, ortg int, drtg int, result int, home_game int)''')
-        conn.execute('''create table if not exists team_total_performance (g_id text, team_name text, date_played date, minutes_played int, fg int, fga int,
+        conn.execute('''create table if not exists team_total_performance (g_id text, team_name text, opponent_name text, date_played date, minutes_played int, fg int, fga int,
                      threeP int, threePA int, FT int, FTA int, ORB int, DRB int, AST int, STL int, BLK int, TOV int, PF int, PTS int, plus_minus int,
                      ts_perc float, three_p_ar float, ftr float, ODR_perc float, DBR_perc float, AST_perc float, STL_perc float, BLK_perc float,
                      TOV_perc flaot, USG_perc float, ortg int, drtg int, result int, home_game int)''')
@@ -62,8 +64,8 @@ def get_game_urls_at_date(input_date):
         return set()
 
 def get_date_range():
-    d1 = datetime.date(1980, 1, 1)
-    #d2 = datetime.date(2005, 1, 31)
+    d1 = datetime.date(2016, 1, 1)
+    # d2 = datetime.date(2016, 1, 12)
     d2 = datetime.datetime.now().date()
     dates = [d1 + datetime.timedelta(days=x) for x in range((d2 - d1).days + 1)]
     random.shuffle(dates)
@@ -115,6 +117,7 @@ def read_game_info(game_url):
         for i in basic_info_tables:
             for j in i.find_all('tr'):
                 team = team_1_id if first_pass else team_2_id
+                opponent = team_1_id if not first_pass else team_2_id
                 columns = j.find_all('td')
                 if j.find('a') is not None:
                     player_id = j.find('a')['href']
@@ -146,6 +149,7 @@ def read_game_info(game_url):
                 except:
                     output_dict['plus_minus'] = None
                 output_dict['team'] = team
+                output_dict['opponent'] = opponent
                 if team in game_url:
                     output_dict['home_game'] = 1
                 else:
@@ -161,6 +165,8 @@ def read_game_info(game_url):
         for i in advanced_info_tables:
             for j in i.find_all('tr'):
                 team = team_1_id if first_pass else team_2_id
+                opponent = team_1_id if not first_pass else team_2_id
+
                 columns = j.find_all('td')
                 if j.find('a') is not None:
                     player_id = j.find('a')['href']
@@ -192,28 +198,28 @@ def read_game_info(game_url):
                     team_totals.get(team, dict).update(output_dict)
             first_pass = False
 
-        with sqlite3.connect('nba.db') as conn:
+        with sqlite3.connect(path + 'nba.db') as conn:
             winning_team = team_1_id if team_1_score > team_2_score else team_2_id
             conn.execute('insert into game values (?, ?, ?)', (game_url, game_date, location))
             conn.execute('insert into team_game values (?,?,?,?,?,?,?)', \
                          (game_url, team_1_id, game_date, 1 if team_1_score > team_2_score else 0,team_1_score,location,None))
             conn.execute('insert into team_game values (?,?,?,?,?,?,?)', \
                          (game_url, team_2_id, game_date, 1 if team_2_score > team_1_score else 0,team_2_score,location,None))
-            for i, j in player_dict.items():
-                conn.execute('insert into player_game_contribution values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
-                             (i, game_url, player_dict[i]['team'], game_date,player_dict[i].get('min_played', 0), player_dict[i].get('fg', None),
-                              player_dict[i].get('fga', None), player_dict[i].get('threeP', None), player_dict[i].get('threePA', None), player_dict[i].get('FT', None),
-                              player_dict[i].get('FTA', None), player_dict[i].get('ORB', None), player_dict[i].get('DRB', None),
-                              player_dict[i].get('AST', None), player_dict[i].get('STL', None), player_dict[i].get('BLK', None),
-                              player_dict[i].get('TOV_perc', None), player_dict[i].get('PF', None), player_dict[i].get('PTS', None),
-                              player_dict[i].get('plus_minus', None), player_dict[i].get('ts_perc', None), player_dict[i].get('three_p_ar', None),
-                              player_dict[i].get('ftr', None), player_dict[i].get('ODR_perc', None), player_dict[i].get('DBR_perc', None),
-                              player_dict[i].get('AST_perc', None), player_dict[i].get('STL_perc', None), player_dict[i].get('BLK_perc', None),
-                              player_dict[i].get('TOV_perc', None), player_dict[i].get('USG_perc', None), player_dict[i].get('ortg', None),
-                              player_dict[i].get('drtg', None), 1 if player_dict[i]['team'] == winning_team else 0, player_dict[i]['home_game']))
+            # for i, j in player_dict.items():
+            #     conn.execute('insert into player_game_contribution values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
+            #                  (i, game_url, player_dict[i]['team'], player_dict[i]['opponent'], game_date,player_dict[i].get('min_played', 0), player_dict[i].get('fg', None),
+            #                   player_dict[i].get('fga', None), player_dict[i].get('threeP', None), player_dict[i].get('threePA', None), player_dict[i].get('FT', None),
+            #                   player_dict[i].get('FTA', None), player_dict[i].get('ORB', None), player_dict[i].get('DRB', None),
+            #                   player_dict[i].get('AST', None), player_dict[i].get('STL', None), player_dict[i].get('BLK', None),
+            #                   player_dict[i].get('TOV_perc', None), player_dict[i].get('PF', None), player_dict[i].get('PTS', None),
+            #                   player_dict[i].get('plus_minus', None), player_dict[i].get('ts_perc', None), player_dict[i].get('three_p_ar', None),
+            #                   player_dict[i].get('ftr', None), player_dict[i].get('ODR_perc', None), player_dict[i].get('DBR_perc', None),
+            #                   player_dict[i].get('AST_perc', None), player_dict[i].get('STL_perc', None), player_dict[i].get('BLK_perc', None),
+            #                   player_dict[i].get('TOV_perc', None), player_dict[i].get('USG_perc', None), player_dict[i].get('ortg', None),
+            #                   player_dict[i].get('drtg', None), 1 if player_dict[i]['team'] == winning_team else 0, player_dict[i]['home_game']))
             for i, j in team_totals.items():
-                conn.execute('insert into team_total_performance values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
-                             (game_url, team_totals[i]['team'], game_date,team_totals[i].get('min_played', 0), team_totals[i].get('fg', None),
+                conn.execute('insert into team_total_performance values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?)', \
+                             (game_url, team_totals[i]['team'], team_totals[i]['opponent'], game_date,team_totals[i].get('min_played', 0), team_totals[i].get('fg', None),
                               team_totals[i].get('fga', None), team_totals[i].get('threeP', None), team_totals[i].get('threePA', None),
                               team_totals[i].get('FT', None),team_totals[i].get('FTA', None), team_totals[i].get('ORB', None), team_totals[i].get('DRB', None),
                               team_totals[i].get('AST', None), team_totals[i].get('STL', None), team_totals[i].get('BLK', None),
@@ -246,10 +252,7 @@ def read_player_info(player_url):
             conn.commit()
     except:
         traceback.print_exc()
-
     return set()
-
-
 
 def main():
     build_db()
@@ -258,7 +261,7 @@ def main():
     player_urls = reduce(operator.or_ ,map(read_game_info, game_urls))
     print(player_urls)
     print(len(player_urls))
-    reduce(operator.or_, map(read_player_info, player_urls))
+    # reduce(operator.or_, map(read_player_info, player_urls))
 
 if __name__ == '__main__':
     main()
